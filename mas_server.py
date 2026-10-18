@@ -15,8 +15,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🚨 PASTE YOUR GROQ KEY HERE 🚨
-GROQ_API_KEY = "PASTE_YOUR_GROQ_API_KEY_HERE"
+# 🚨 THIS READS THE KEY FROM RENDER'S SECRET VAULT 🚨
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 
 SYSTEM_PROMPT = """
 You are M.A.S. AI (Massive Architecture System), created by Maru.
@@ -34,6 +34,11 @@ def read_root():
 
 @app.post("/chat")
 def chat_with_ai(req: ChatRequest):
+    
+    # Safety check
+    if not GROQ_API_KEY:
+        return {"reply": "⚠️ Boss, the API key is missing on Render! Please check your Environment Variables."}
+
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     
     # Add past conversation
@@ -45,12 +50,18 @@ def chat_with_ai(req: ChatRequest):
     # Call Groq
     response = requests.post(
         "https://api.groq.com/openai/v1/chat/completions",
-        headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-        json={"model": "openai/gpt-oss-120b", "messages": messages}
+        headers={
+            "Authorization": f"Bearer {GROQ_API_KEY}", 
+            "Content-Type": "application/json"
+        },
+        json={
+            "model": "openai/gpt-oss-120b", 
+            "messages": messages
+        }
     )
 
     if response.status_code == 200:
         ai_reply = response.json()["choices"][0]["message"]["content"]
         return {"reply": ai_reply}
     else:
-        return {"reply": f"Error: {response.text}"}
+        return {"reply": f"❌ API Error: {response.text}"}
