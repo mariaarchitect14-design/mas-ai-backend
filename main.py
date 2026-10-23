@@ -70,7 +70,7 @@ def analyze_image(req: VisionRequest):
 
     try:
         # Use gemini-3.8-flash (the current stable model) and add a 30 second timeout
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
+        url = f"https://aiplatform.googleapis.com/v1beta1/publishers/google/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
         headers = {"Content-Type": "application/json"}
         payload = {
             "contents": [{
