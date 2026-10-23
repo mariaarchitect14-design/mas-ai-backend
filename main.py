@@ -15,7 +15,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🚨 MAKE SURE BOTH KEYS ARE SET IN FASTAPI CLOUD DASHBOARD
+# 🚨 ENVIRONMENT VARIABLES 🚨
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 
@@ -25,7 +25,6 @@ You are a warm, funny, strict mentor. Use lots of emojis (🚀, 💛, 🧠, 💻
 You are an expert coder. Always format code perfectly.
 """
 
-# 🚨 TWO DIFFERENT REQUESTS
 class ChatRequest(BaseModel):
     message: str
     history: list = []
@@ -38,7 +37,7 @@ class VisionRequest(BaseModel):
 def read_root():
     return {"status": "M.A.S. AI Server is running! 🚀"}
 
-# 🚨 ENDPOINT 1: CHAT
+# --- ENDPOINT 1: CHAT ---
 @app.post("/chat")
 def chat_with_ai(req: ChatRequest):
     if not GROQ_API_KEY:
@@ -52,7 +51,8 @@ def chat_with_ai(req: ChatRequest):
     response = requests.post(
         "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-        json={"model": "openai/gpt-oss-120b", "messages": messages}
+        json={"model": "openai/gpt-oss-120b", "messages": messages},
+        timeout=30
     )
 
     if response.status_code == 200:
@@ -60,7 +60,7 @@ def chat_with_ai(req: ChatRequest):
     else:
         return {"reply": f"❌ API Error: {response.text}"}
 
-# 🚨 ENDPOINT 2: VISION (UPDATED)
+# --- ENDPOINT 2: VISION ---
 @app.post("/vision")
 def analyze_image(req: VisionRequest):
     if not GEMINI_API_KEY:
@@ -69,9 +69,12 @@ def analyze_image(req: VisionRequest):
         return {"reply": "⚠️ Boss, the Groq API key is missing!"}
 
     try:
-        # Use gemini-3.8-flash (the current stable model) and add a 30 second timeout
-        url = f"https://aiplatform.googleapis.com/v1beta1/publishers/google/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
-        headers = {"Content-Type": "application/json"}
+        # Native Gemini API endpoint with Header Auth (Fixes the AQ. key issue)
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": GEMINI_API_KEY
+        }
         payload = {
             "contents": [{
                 "parts": [
@@ -81,7 +84,6 @@ def analyze_image(req: VisionRequest):
             }]
         }
         
-        # Added timeout=30 here
         vision_response = requests.post(url, headers=headers, json=payload, timeout=30)
         
         if vision_response.status_code != 200:
@@ -89,13 +91,12 @@ def analyze_image(req: VisionRequest):
 
         image_analysis = vision_response.json()['candidates'][0]['content']['parts'][0]['text']
 
-        # Send Gemini's description to Groq
+        # Send Gemini's description to Groq for the M.A.S. AI personality
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": f"I uploaded an image and asked: '{req.prompt}'. Here is what the image contains: {image_analysis}. Please respond to me based on this."}
         ]
 
-        # Added timeout=30 here too
         groq_response = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
             headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
