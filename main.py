@@ -62,14 +62,11 @@ def analyze_image(req: VisionRequest):
         return {"reply": "⚠️ Boss, the Groq API key is missing!"}
 
     try:
-        # 🚨 USING GROQ'S FAST VISION MODEL 🚨
         url = "https://api.groq.com/openai/v1/chat/completions"
-        
-        # Format the image for Groq
         image_url = f"data:image/jpeg;base64,{req.image_base64}"
 
         payload = {
-            "model": "llama-3.2-11b-vision-preview",
+            "model": "qwen/qwen3.8-27b", # 🚨 NEW WORKING MODEL
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {
