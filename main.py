@@ -3,7 +3,6 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import requests
 import os
-import base64
 
 app = FastAPI()
 
@@ -15,9 +14,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🚨 ENVIRONMENT VARIABLES 🚨
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 
 SYSTEM_PROMPT = """
 You are M.A.S. AI (Massive Architecture System), created by Maru.
@@ -37,7 +34,6 @@ class VisionRequest(BaseModel):
 def read_root():
     return {"status": "M.A.S. AI Server is running! 🚀"}
 
-# --- ENDPOINT 1: CHAT ---
 @app.post("/chat")
 def chat_with_ai(req: ChatRequest):
     if not GROQ_API_KEY:
@@ -60,56 +56,45 @@ def chat_with_ai(req: ChatRequest):
     else:
         return {"reply": f"❌ API Error: {response.text}"}
 
-# --- ENDPOINT 2: VISION ---
 @app.post("/vision")
 def analyze_image(req: VisionRequest):
-    if not GEMINI_API_KEY:
-        return {"reply": "⚠️ Boss, the Gemini API key is missing!"}
     if not GROQ_API_KEY:
         return {"reply": "⚠️ Boss, the Groq API key is missing!"}
 
     try:
-        # Native Gemini API endpoint with Header Auth (Fixes the AQ. key issue)
-        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"
-        headers = {
-            "Content-Type": "application/json",
-            "x-goog-api-key": GEMINI_API_KEY
-        }
+        # 🚨 USING GROQ'S FAST VISION MODEL 🚨
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        
+        # Format the image for Groq
+        image_url = f"data:image/jpeg;base64,{req.image_base64}"
+
         payload = {
-            "contents": [{
-                "parts": [
-                    {"text": req.prompt},
-                    {"inline_data": {"mime_type": "image/jpeg", "data": req.image_base64}}
-                ]
-            }]
+            "model": "llama-3.2-11b-vision-preview",
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": req.prompt},
+                        {"type": "image_url", "image_url": {"url": image_url}}
+                    ]
+                }
+            ],
+            "temperature": 0.7,
+            "max_tokens": 1024
         }
-        
-        vision_response = requests.post(url, headers=headers, json=payload, timeout=30)
-        
-        if vision_response.status_code != 200:
-            return {"reply": f"Gemini Vision Error: {vision_response.text}"}
 
-        image_analysis = vision_response.json()['candidates'][0]['content']['parts'][0]['text']
-
-        # Send Gemini's description to Groq for the M.A.S. AI personality
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"I uploaded an image and asked: '{req.prompt}'. Here is what the image contains: {image_analysis}. Please respond to me based on this."}
-        ]
-
-        groq_response = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
+        response = requests.post(
+            url,
             headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-            json={"model": "openai/gpt-oss-120b", "messages": messages},
+            json=payload,
             timeout=30
         )
 
-        if groq_response.status_code == 200:
-            return {"reply": groq_response.json()["choices"][0]["message"]["content"]}
+        if response.status_code == 200:
+            return {"reply": response.json()["choices"][0]["message"]["content"]}
         else:
-            return {"reply": f"Groq Error: {groq_response.text}"}
+            return {"reply": f"Groq Vision Error: {response.text}"}
 
-    except requests.exceptions.Timeout:
-        return {"reply": "⚠️ Server took too long to talk to Google. Please try again."}
     except Exception as e:
         return {"reply": f"Server Error: {e}"}
