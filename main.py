@@ -32,7 +32,7 @@ class ChatRequest(BaseModel):
 def read_root():
     return {"status": "M.A.S. AI Server is running! 🚀"}
 
-@app.post("/chat")
+@app.post("/vision")
 def chat_with_ai(req: ChatRequest):
     
     # Safety check
