@@ -60,7 +60,7 @@ def chat_with_ai(req: ChatRequest):
     else:
         return {"reply": f"❌ API Error: {response.text}"}
 
-# 🚨 ENDPOINT 2: VISION (THE NEW ONE)
+# 🚨 ENDPOINT 2: VISION (UPDATED)
 @app.post("/vision")
 def analyze_image(req: VisionRequest):
     if not GEMINI_API_KEY:
@@ -69,8 +69,8 @@ def analyze_image(req: VisionRequest):
         return {"reply": "⚠️ Boss, the Groq API key is missing!"}
 
     try:
-        # Send image to Gemini to read it
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key={GEMINI_API_KEY}"
+        # Use gemini-2.5-flash (the current stable model) and add a 30 second timeout
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
         headers = {"Content-Type": "application/json"}
         payload = {
             "contents": [{
@@ -80,23 +80,27 @@ def analyze_image(req: VisionRequest):
                 ]
             }]
         }
-        vision_response = requests.post(url, headers=headers, json=payload)
+        
+        # Added timeout=30 here
+        vision_response = requests.post(url, headers=headers, json=payload, timeout=30)
         
         if vision_response.status_code != 200:
             return {"reply": f"Gemini Vision Error: {vision_response.text}"}
 
         image_analysis = vision_response.json()['candidates'][0]['content']['parts'][0]['text']
 
-        # Send Gemini's description to Groq for the M.A.S. AI personality
+        # Send Gemini's description to Groq
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": f"I uploaded an image and asked: '{req.prompt}'. Here is what the image contains: {image_analysis}. Please respond to me based on this."}
         ]
 
+        # Added timeout=30 here too
         groq_response = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
             headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-            json={"model": "openai/gpt-oss-120b", "messages": messages}
+            json={"model": "openai/gpt-oss-120b", "messages": messages},
+            timeout=30
         )
 
         if groq_response.status_code == 200:
@@ -104,5 +108,7 @@ def analyze_image(req: VisionRequest):
         else:
             return {"reply": f"Groq Error: {groq_response.text}"}
 
+    except requests.exceptions.Timeout:
+        return {"reply": "⚠️ Server took too long to talk to Google. Please try again."}
     except Exception as e:
         return {"reply": f"Server Error: {e}"}
