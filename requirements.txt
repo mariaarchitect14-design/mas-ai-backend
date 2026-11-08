@@ -1,4 +1,7 @@
-fastapi[standard]
+fastapi
 uvicorn
-requests
-pydantic
+python-multipart
+firebase-admin
+google-generativeai
+python-dotenv
+pillow
