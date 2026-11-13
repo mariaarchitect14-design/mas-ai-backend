@@ -343,15 +343,13 @@ def clear_memory(current_user: dict = Depends(get_current_user)):
 
 # ===== THE FIXED IMAGE GENERATOR =====
 @app.post("/generate-image")
-async def generate_image(req: ImageGenerationRequest, current_user: dict = Depends(get_current_user)):
+async def generate_image(req: ImageGenerationRequest):
     prompt = req.prompt.strip()
     if len(prompt) < 3:
         return {"error": "Please enter a longer image description."}
     
-    # Just create the URL. Don't download the image on the server!
     image_url = f"https://image.pollinations.ai/prompt/{quote(prompt, safe='')}?width=1024&height=1024&nologo=true"
     
-    # Send the URL straight back to the app
     return {"image_url": image_url}
 
     try:
