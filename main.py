@@ -343,18 +343,16 @@ def clear_memory(current_user: dict = Depends(get_current_user)):
 
 # ===== THE FIXED IMAGE GENERATOR =====
 @app.post("/generate-image")
-def generate_image(req: ImageGenerationRequest, current_user: dict = Depends(get_current_user)):
+async def generate_image(req: ImageGenerationRequest, current_user: dict = Depends(verify_token)):
     prompt = req.prompt.strip()
     if len(prompt) < 3:
         return {"error": "Please enter a longer image description."}
-
-    image_url = POLLINATIONS_IMAGE_URL + quote(prompt, safe="")
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    if POLLINATIONS_API_KEY:
-        headers["Authorization"] = f"Bearer {POLLINATIONS_API_KEY}"
+    
+    # Just create the URL. Don't download the image on the server!
+    image_url = f"https://image.pollinations.ai/prompt/{quote(prompt, safe='')}?width=1024&height=1024&nologo=true"
+    
+    # Send the URL straight back to the app
+    return {"image_url": image_url}
 
     try:
         # CHANGED: Using "turbo" model and removing "private" which causes errors
