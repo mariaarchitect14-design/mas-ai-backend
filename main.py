@@ -8,6 +8,7 @@ import re
 import sqlite3
 import base64
 import binascii
+import json
 from datetime import datetime
 from urllib.parse import quote
 from dotenv import load_dotenv
@@ -21,14 +22,8 @@ from firebase_admin import credentials, auth
 load_dotenv()
 
 app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # This allows your live website to talk to it
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
+# We only need ONE CORS middleware, not two.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -39,10 +34,18 @@ app.add_middleware(
 
 # ===== NEW: Initialize Firebase Admin =====
 try:
-    # Ensure firebase-service-account.json is in the backend folder!
-    cred = credentials.Certificate("firebase-service-account.json")
+    # 1. Try to load from Environment Variable (SnapDeploy)
+    cred_json = os.environ.get("FIREBASE_CREDENTIALS")
+    if cred_json:
+        cred_dict = json.loads(cred_json)
+        cred = credentials.Certificate(cred_dict)
+        print("Firebase Admin initialized from Environment Variable.")
+    else:
+        # 2. Fall back to local file (Local Laptop)
+        cred = credentials.Certificate("firebase-service-account.json")
+        print("Firebase Admin initialized from local JSON file.")
+        
     firebase_admin.initialize_app(cred)
-    print("Firebase Admin initialized successfully.")
 except Exception as e:
     print(f"WARNING: Firebase Admin SDK could not initialize. Authentication will fail. Error: {e}")
 
@@ -351,36 +354,6 @@ async def generate_image(req: ImageGenerationRequest):
     image_url = f"https://image.pollinations.ai/prompt/{quote(prompt, safe='')}?width=1024&height=1024&nologo=true"
     
     return {"image_url": image_url}
-
-    try:
-        # CHANGED: Using "turbo" model and removing "private" which causes errors
-        response = requests.get(
-            image_url,
-            params={
-                "width": req.width,
-                "height": req.height,
-                "nologo": "true",
-                "model": "turbo" 
-            },
-            headers=headers,
-            timeout=90,
-        )
-
-        if response.status_code != 200:
-            # Get the actual error from Pollinations
-            error_msg = response.text[:100]
-            return {"error": f"AI Server Error ({response.status_code}): {error_msg}"}
-
-        content_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
-        if content_type not in {"image/jpeg", "image/png", "image/webp"}:
-            return {"error": "The AI returned an invalid format. Try a different prompt."}
-            
-        return {
-            "image_base64": base64.b64encode(response.content).decode("ascii"),
-            "mime_type": content_type,
-        }
-    except requests.RequestException:
-        return {"error": "Network timeout. Pollinations took too long to respond."}
 # =====================================
 
 
