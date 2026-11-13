@@ -343,7 +343,7 @@ def clear_memory(current_user: dict = Depends(get_current_user)):
 
 # ===== THE FIXED IMAGE GENERATOR =====
 @app.post("/generate-image")
-async def generate_image(req: ImageGenerationRequest, current_user: dict = Depends(verify_token)):
+async def generate_image(req: ImageGenerationRequest, current_user: dict = Depends(get_current_user)):
     prompt = req.prompt.strip()
     if len(prompt) < 3:
         return {"error": "Please enter a longer image description."}
