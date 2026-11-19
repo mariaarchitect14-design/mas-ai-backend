@@ -10,7 +10,7 @@ import re
 import sqlite3
 import base64
 import binascii
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import quote
 from dotenv import load_dotenv
 from duckduckgo_search import DDGS
@@ -86,7 +86,7 @@ ALLOWED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
 import datetime
 
 # Get the current real-world date
-current_date = datetime.datetime.now().strftime("%B %d, %Y")
+current_date = datetime.datetime.now(datetime.timezone.utc).strftime("%B %d, %Y")
 
 SYSTEM_PROMPT = f"""
 You are Multa AI (Massive Architecture System), created by Maru.
