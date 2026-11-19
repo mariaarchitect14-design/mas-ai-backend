@@ -11,6 +11,7 @@ import sqlite3
 import base64
 import binascii
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from urllib.parse import quote
 from dotenv import load_dotenv
 from duckduckgo_search import DDGS
@@ -83,16 +84,30 @@ POLLINATIONS_IMAGE_URL = os.environ.get(
 MAX_IMAGE_BYTES = 8 * 1024 * 1024  # 8 MB
 ALLOWED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
-import datetime
+APP_TIMEZONE = os.environ.get("APP_TIMEZONE", "Asia/Karachi").strip()
 
-# Get the current real-world date
-current_date = datetime.datetime.now(datetime.timezone.utc).strftime("%B %d, %Y")
+
+def get_current_dt() -> datetime:
+    try:
+        tz = ZoneInfo(APP_TIMEZONE)
+    except Exception:
+        tz = timezone.utc
+    return datetime.now(tz)
+
+
+def get_current_datetime_str() -> str:
+    now_dt = get_current_dt()
+    return now_dt.strftime("%A, %B %d, %Y at %I:%M %p %Z")
+
+
+# Get the current real-world date & time dynamically per request
+current_date = get_current_datetime_str()
 
 SYSTEM_PROMPT = f"""
 You are Multa AI (Massive Architecture System), created by Maru.
-Today's date is {current_date}. 
+Today's date and time is {{current_datetime}}. 
 
-CRITICAL RULE: Your internal knowledge might stop in 2024, but you must act as if today is {current_date}. If the user asks about current events, leaders, or news from 2025 or 2026 that you do not know, you must say: "My internal knowledge ends in 2024. To get the latest answer for {current_date}, please use a live web search."
+CRITICAL RULE: Your internal knowledge might stop in 2024, but you must act as if the current date and time is {{current_datetime}}. Use any provided live web search results for current events, leaders, or news in 2026 or the current time. If the user asks about current events, leaders, or news from 2025 or 2026 that you do not know and no live search results cover it, you must say: "My internal knowledge ends in 2024. To get the latest answer for {{current_datetime}}, please use a live web search."
 
 CORE RESPONSE RULES:
 1. Answer the user's actual question directly and clearly.
@@ -263,7 +278,7 @@ def save_message(user_id: str, role: str, content: str):
     cursor.execute(
         "INSERT INTO chat_history (user_id, role, content, timestamp) "
         "VALUES (?, ?, ?, ?)",
-        (user_id, role, content, datetime.datetime.now().isoformat()),
+        (user_id, role, content, get_current_dt().isoformat()),
     )
     conn.commit()
     conn.close()
@@ -327,7 +342,7 @@ def add_memory(req: MemoryRequest, current_user: dict = Depends(get_current_user
     content = req.content.strip()
     if not content:
         return {"error": "Memory content cannot be empty."}
-    now = datetime.datetime.now().isoformat()
+    now = get_current_dt().isoformat()
     conn = sqlite3.connect("mas_chat.db")
     cursor = conn.cursor()
     cursor.execute("INSERT INTO shared_memory (user_id, content, created_at, updated_at) VALUES (?, ?, ?, ?)", (user_id, content, now, now))
@@ -345,7 +360,7 @@ def update_memory(memory_id: int, req: MemoryUpdateRequest, current_user: dict =
         return {"error": "Memory content cannot be empty."}
     conn = sqlite3.connect("mas_chat.db")
     cursor = conn.cursor()
-    cursor.execute("UPDATE shared_memory SET content = ?, updated_at = ? WHERE id = ? AND user_id = ?", (content, datetime.now().isoformat(), memory_id, user_id))
+    cursor.execute("UPDATE shared_memory SET content = ?, updated_at = ? WHERE id = ? AND user_id = ?", (content, get_current_dt().isoformat(), memory_id, user_id))
     changed = cursor.rowcount
     conn.commit()
     conn.close()
@@ -455,7 +470,8 @@ def chat_with_ai(req: ChatRequest, current_user: dict = Depends(get_current_user
     conn.close()
 
     memory_text = "\n".join(f"- {row[0]}" for row in reversed(memory_rows))
-    system_content = SYSTEM_PROMPT + "\n\n" + AGENT_PROMPTS[agent_id]
+    current_datetime = get_current_datetime_str()
+    system_content = SYSTEM_PROMPT.format(current_datetime=current_datetime) + "\n\n" + AGENT_PROMPTS[agent_id]
     if memory_text:
         system_content += (
             "\n\nSHARED USER MEMORY (available to every agent; use only when relevant):\n"
