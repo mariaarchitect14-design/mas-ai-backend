@@ -485,11 +485,16 @@ def chat_with_ai(req: ChatRequest, current_user: dict = Depends(get_current_user
     if any(keyword in user_text_lower for keyword in current_keywords):
         try:
             print("Performing live web search...")
-            results = DDGS().text(req.message, max_results=3)
+            search_query = f"{req.message.strip()} {get_current_dt().year}"
+            with DDGS() as ddgs:
+                results = list(ddgs.text(search_query, max_results=5))
             if results:
                 search_context = "\n\nLIVE WEB SEARCH RESULTS:\n"
                 for res in results:
-                    search_context += f"- {res['body']}\n"
+                    body = res.get("body") or res.get("snippet") or ""
+                    title = res.get("title") or ""
+                    if body:
+                        search_context += f"- {title}: {body}\n"
                 
                 # Inject this live data into the AI's system prompt
                 system_content += search_context
