@@ -263,7 +263,7 @@ def save_message(user_id: str, role: str, content: str):
     cursor.execute(
         "INSERT INTO chat_history (user_id, role, content, timestamp) "
         "VALUES (?, ?, ?, ?)",
-        (user_id, role, content, datetime.now().isoformat()),
+        (user_id, role, content, datetime.datetime.now().isoformat()),
     )
     conn.commit()
     conn.close()
@@ -327,7 +327,7 @@ def add_memory(req: MemoryRequest, current_user: dict = Depends(get_current_user
     content = req.content.strip()
     if not content:
         return {"error": "Memory content cannot be empty."}
-    now = datetime.now().isoformat()
+    now = datetime.datetime.now().isoformat()
     conn = sqlite3.connect("mas_chat.db")
     cursor = conn.cursor()
     cursor.execute("INSERT INTO shared_memory (user_id, content, created_at, updated_at) VALUES (?, ?, ?, ?)", (user_id, content, now, now))
