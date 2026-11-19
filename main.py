@@ -103,11 +103,11 @@ def get_current_datetime_str() -> str:
 # Get the current real-world date & time dynamically per request
 current_date = get_current_datetime_str()
 
-SYSTEM_PROMPT = f"""
+SYSTEM_PROMPT = """
 You are Multa AI (Massive Architecture System), created by Maru.
-Today's date and time is {{current_datetime}}. 
+Today's date and time is {current_datetime}. 
 
-CRITICAL RULE: Your internal knowledge might stop in 2024, but you must act as if the current date and time is {{current_datetime}}. Use any provided live web search results for current events, leaders, or news in 2026 or the current time. If the user asks about current events, leaders, or news from 2025 or 2026 that you do not know and no live search results cover it, you must say: "My internal knowledge ends in 2024. To get the latest answer for {{current_datetime}}, please use a live web search."
+CRITICAL RULE: Your internal knowledge might stop in 2024, but you must act as if the current date and time is {current_datetime}. Use any provided live web search results for current events, leaders, or news in 2026 or the current time. If the user asks about current events, leaders, or news from 2025 or 2026 that you do not know and no live search results cover it, you must say: "My internal knowledge ends in 2024. To get the latest answer for {current_datetime}, please use a live web search."
 
 CORE RESPONSE RULES:
 1. Answer the user's actual question directly and clearly.
@@ -471,7 +471,7 @@ def chat_with_ai(req: ChatRequest, current_user: dict = Depends(get_current_user
 
     memory_text = "\n".join(f"- {row[0]}" for row in reversed(memory_rows))
     current_datetime = get_current_datetime_str()
-    system_content = SYSTEM_PROMPT.format(current_datetime=current_datetime) + "\n\n" + AGENT_PROMPTS[agent_id]
+    system_content = SYSTEM_PROMPT.replace("{current_datetime}", current_datetime) + "\n\n" + AGENT_PROMPTS[agent_id]
     if memory_text:
         system_content += (
             "\n\nSHARED USER MEMORY (available to every agent; use only when relevant):\n"
