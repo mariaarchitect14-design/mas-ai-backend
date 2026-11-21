@@ -1,5 +1,5 @@
 import json
-import duckduckgo_search
+import ddgs
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from urllib.parse import quote
 from dotenv import load_dotenv
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 
 # ===== NEW: Firebase Admin Imports =====
 import firebase_admin
@@ -553,27 +553,20 @@ def chat_with_ai(req: ChatRequest, current_user: dict = Depends(get_current_user
         if needs_search and image_data_uri is None: # Don't search if the user uploaded an image
             print("AI didn't know the answer. Triggering smart web search...")
             try:
-                # ===== NEW: Context-Aware Search Query =====
+                # Clean up conversational words and symbols for DuckDuckGo
                 search_query = req.message.strip().lower()
+                search_query = re.sub(r'[^a-zA-Z0-9\s]', '', search_query) # Removes ?, =, etc.
                 
-                # If the question is a follow-up (short, starts with "and", "what about", etc.)
-                if len(search_query.split()) < 6 and len(messages) > 1:
-                    # Find the previous user message to provide context
-                    for msg in reversed(messages[:-1]):
-                        if msg["role"] == "user":
-                            prev_text = msg["content"].lower()
-                            search_query = f"{prev_text} {search_query}"
-                            break
-                            
-                # Clean up conversational words for DuckDuckGo
-                for word in ["and ", "who is ", "what is ", "tell me ", "the "]:
+                # Remove filler words
+                for word in ["and ", "who is ", "what is ", "tell me ", "the ", "how much ", "current "]:
                     search_query = search_query.replace(word, "")
                     
                 search_query = f"{search_query.strip()} {get_current_dt().year}"
                 print(f"Generated Search Query: {search_query}")
 
-                with DDGS() as ddgs:
-                    results = list(ddgs.text(search_query, max_results=4))
+                # Call the new ddgs library
+                with DDGS() as ddgs_client:
+                    results = list(ddgs_client.text(search_query, max_results=4))
                 # ==========================================
                 
                 if results:
@@ -586,11 +579,9 @@ def chat_with_ai(req: ChatRequest, current_user: dict = Depends(get_current_user
                     
                     print("Search successful. Asking AI again with new data...")
                     
-                    # We append the AI's initial "I don't know" answer and then a new user prompt with the search results
                     messages.append({"role": "assistant", "content": ai_reply})
                     messages.append({"role": "user", "content": f"Based on these live search results, answer my original question accurately:\n{search_context}"})
                     
-                    # SECOND ATTEMPT: Ask the AI again with search results
                     second_response = requests.post(
                         GROQ_URL,
                         headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
