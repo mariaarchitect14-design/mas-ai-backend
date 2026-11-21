@@ -86,7 +86,6 @@ ALLOWED_IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 APP_TIMEZONE = os.environ.get("APP_TIMEZONE", "Asia/Karachi").strip()
 
-
 def get_current_dt() -> datetime:
     try:
         tz = ZoneInfo(APP_TIMEZONE)
@@ -94,20 +93,20 @@ def get_current_dt() -> datetime:
         tz = timezone.utc
     return datetime.now(tz)
 
-
 def get_current_datetime_str() -> str:
     now_dt = get_current_dt()
     return now_dt.strftime("%A, %B %d, %Y at %I:%M %p %Z")
 
-
 # Get the current real-world date & time dynamically per request
 current_date = get_current_datetime_str()
 
-SYSTEM_PROMPT = """
-You are Multa AI (Massive Architecture System), created by Maru.
-Today's date and time is {current_datetime}. 
+SYSTEM_PROMPT = f"""
+You are Multa AI, created by Maru.
+Today's date is {current_date}. 
 
-CRITICAL RULE: Act as if the current date and time is {current_datetime}. Prioritize any provided LIVE WEB SEARCH RESULTS for current events, leaders, or news in 2026 or the current time. If no live web search results are provided or a detail isn't in them, answer directly using your best available knowledge without claiming a 2024 cutoff unless genuinely unknown, and clearly note if real-time verification may be needed.
+CRITICAL RULE: 
+If you are provided with "LIVE WEB SEARCH RESULTS" in this prompt, you MUST use them to answer the user's question accurately, even if it contradicts your internal knowledge.
+If no search results are provided and you do not know the answer, you must say EXACTLY: "My internal knowledge ends in 2024. To get the latest answer for {current_date}, please try asking again so I can search the live web."
 
 CORE RESPONSE RULES:
 1. Answer the user's actual question directly and clearly.
@@ -478,32 +477,6 @@ def chat_with_ai(req: ChatRequest, current_user: dict = Depends(get_current_user
             + memory_text
         )
 
-     # ===== NEW: LIVE WEB SEARCH =====
-    current_keywords = ["president", "current", "now", "2026", "2025", "news", "who is", "latest"]
-    user_text_lower = req.message.lower()
-    
-    if any(keyword in user_text_lower for keyword in current_keywords):
-        try:
-            print("Performing live web search...")
-            search_query = f"{req.message.strip()} {get_current_dt().year}"
-            with DDGS() as ddgs:
-                results = list(ddgs.text(search_query, max_results=5))
-            if results:
-                search_context = "\n\nLIVE WEB SEARCH RESULTS:\n"
-                for res in results:
-                    body = res.get("body") or res.get("snippet") or ""
-                    title = res.get("title") or ""
-                    if body:
-                        search_context += f"- {title}: {body}\n"
-                
-                # Inject this live data into the AI's system prompt
-                system_content += search_context
-                print("Web search successful. Injecting data into AI.")
-        except Exception as e:
-            print(f"Web search failed: {e}")
-    # =================================
-
-    # THIS LINE SHOULD ALREADY BE THERE (Right below the search block)
     messages = [{"role": "system", "content": system_content}]
 
     for msg in req.history[-30:]:
@@ -531,6 +504,7 @@ def chat_with_ai(req: ChatRequest, current_user: dict = Depends(get_current_user
         model_to_use = GROQ_MODEL
 
     try:
+        # FIRST ATTEMPT: Ask the AI
         response = requests.post(
             GROQ_URL,
             headers={
@@ -556,6 +530,7 @@ def chat_with_ai(req: ChatRequest, current_user: dict = Depends(get_current_user
 
         payload = response.json()
         message_content = payload["choices"][0]["message"]["content"]
+        
         if isinstance(message_content, str):
             ai_reply = message_content.strip()
         elif isinstance(message_content, list):
@@ -566,15 +541,63 @@ def chat_with_ai(req: ChatRequest, current_user: dict = Depends(get_current_user
             ).strip()
         else:
             ai_reply = ""
+
         if not ai_reply:
             raise ValueError("The AI returned an empty message.")
+
+        # ===== SMART AGENTIC FALLBACK SEARCH =====
+        # Check if the AI said it doesn't know the answer
+        fallback_phrases = ["internal knowledge ends in 2024", "don't have access", "cannot browse", "knowledge cutoff"]
+        needs_search = any(phrase.lower() in ai_reply.lower() for phrase in fallback_phrases)
+
+        if needs_search and image_data_uri is None: # Don't search if the user uploaded an image
+            print("AI didn't know the answer. Triggering smart web search...")
+            try:
+                search_query = f"{req.message.strip()} {get_current_dt().year}"
+                with DDGS() as ddgs:
+                    results = list(ddgs.text(search_query, max_results=4))
+                
+                if results:
+                    search_context = "\n\nLIVE WEB SEARCH RESULTS:\n"
+                    for res in results:
+                        body = res.get("body") or res.get("snippet") or ""
+                        title = res.get("title") or ""
+                        if body:
+                            search_context += f"- {title}: {body}\n"
+                    
+                    print("Search successful. Asking AI again with new data...")
+                    
+                    # We append the AI's initial "I don't know" answer and then a new user prompt with the search results
+                    messages.append({"role": "assistant", "content": ai_reply})
+                    messages.append({"role": "user", "content": f"Based on these live search results, answer my original question accurately:\n{search_context}"})
+                    
+                    # SECOND ATTEMPT: Ask the AI again with search results
+                    second_response = requests.post(
+                        GROQ_URL,
+                        headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+                        json={"model": model_to_use, "messages": messages, "max_completion_tokens": 4096},
+                        timeout=45,
+                    )
+                    
+                    if second_response.status_code == 200:
+                        second_payload = second_response.json()
+                        second_content = second_payload["choices"][0]["message"]["content"]
+                        if isinstance(second_content, str):
+                            ai_reply = second_content.strip()
+                        print("AI successfully answered using web search!")
+            except Exception as e:
+                print(f"Smart web search failed: {e}")
+        # =========================================
+
         saved_user_text = req.message.strip()
         if image_data_uri:
             image_label = (req.image_name or "attached image").replace("\\n", " ").strip()[:120]
             prompt_label = user_text or "Please describe and analyze the attached image."
             saved_user_text = f"{prompt_label} [Image attached: {image_label}]".strip()
+        
         save_message(user_id, "user", saved_user_text)
         save_message(user_id, "assistant", ai_reply)
+        
         return {"reply": ai_reply, "response": ai_reply, "agent_id": agent_id}
 
     except requests.RequestException:
