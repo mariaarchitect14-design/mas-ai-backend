@@ -553,9 +553,28 @@ def chat_with_ai(req: ChatRequest, current_user: dict = Depends(get_current_user
         if needs_search and image_data_uri is None: # Don't search if the user uploaded an image
             print("AI didn't know the answer. Triggering smart web search...")
             try:
-                search_query = f"{req.message.strip()} {get_current_dt().year}"
+                # ===== NEW: Context-Aware Search Query =====
+                search_query = req.message.strip().lower()
+                
+                # If the question is a follow-up (short, starts with "and", "what about", etc.)
+                if len(search_query.split()) < 6 and len(messages) > 1:
+                    # Find the previous user message to provide context
+                    for msg in reversed(messages[:-1]):
+                        if msg["role"] == "user":
+                            prev_text = msg["content"].lower()
+                            search_query = f"{prev_text} {search_query}"
+                            break
+                            
+                # Clean up conversational words for DuckDuckGo
+                for word in ["and ", "who is ", "what is ", "tell me ", "the "]:
+                    search_query = search_query.replace(word, "")
+                    
+                search_query = f"{search_query.strip()} {get_current_dt().year}"
+                print(f"Generated Search Query: {search_query}")
+
                 with DDGS() as ddgs:
                     results = list(ddgs.text(search_query, max_results=4))
+                # ==========================================
                 
                 if results:
                     search_context = "\n\nLIVE WEB SEARCH RESULTS:\n"
